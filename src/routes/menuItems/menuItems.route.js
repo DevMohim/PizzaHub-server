@@ -6,15 +6,20 @@ export const menuItemsCollection = db.collection('MenuItems')
  const router = Router()
 
 //getAll menus
-router.get('/' ,(req,res)=> {
-   res.send({message: 'menu items found successfully'})
+router.get('/' ,async(req,res)=> {
+   const result = await menuItemsCollection.find().toArray()
+   res.status(201).send(result)
 })
 
 //create menu
 router.post('/', async(req,res)=>{
-   const menuData = req.body 
+   const data = req.body 
+   const menuData = {
+      ...data,
+      status: 'pending'
+   }
    const result = await menuItemsCollection.insertOne(menuData)
-   res.send(result)
+   res.status(201).send(result)
 })
 
 
