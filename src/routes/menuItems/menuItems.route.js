@@ -11,6 +11,13 @@ router.get('/' ,async(req,res)=> {
    res.status(201).send(result)
 })
 
+//get menus by individual vendor by email
+router.get('/:email' , async(req,res) => {
+   const {email} = req.params
+   const result = await menuItemsCollection.find({userEmail: email}).toArray()
+   res.status(201).send(result)
+})
+
 //create menu
 router.post('/', async(req,res)=>{
    const data = req.body 
