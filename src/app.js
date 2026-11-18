@@ -1,6 +1,7 @@
 import express from 'express'
 import cors from 'cors'
-import menuItemsRoute from '../src/routes/menuItems/menuItems.route.js'
+import menuItemsRoute from './routes/menuItems/menuItems.route.js'
+import bookingsRoute from './routes/bookings/bookings.route.js'
 
 
 const app = express()
@@ -16,6 +17,7 @@ app.get("/", (req, res) => {
 
 //All route import here
 app.use('/menuItems' , menuItemsRoute)
+app.use('/bookings' , bookingsRoute)
 
 
 // সব route এর পরে
