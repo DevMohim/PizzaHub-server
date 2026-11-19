@@ -51,6 +51,27 @@ router.get("/:id", async (req, res) => {
   }
 });
 
+router.delete('/:id' ,async (req,res)=> {
+ try {
+    const { id } = req.params;
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid item ID" });
+    }
+
+    const result = await menuItemsCollection.deleteOne({ _id: new ObjectId(id) });
+
+    if (!result) {
+      return res.status(404).json({ message: "Menu item not found" });
+    }
+
+    res.status(200).json({ message: "Menu item approved" });
+  } catch (error) {
+    res.status(500).json({ message: "Failed to approve menu item" });
+  } 
+})
+
+
 router.patch("/:id/approve", async (req, res) => {
   try {
     const { id } = req.params;
