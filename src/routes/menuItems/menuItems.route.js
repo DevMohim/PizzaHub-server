@@ -13,6 +13,7 @@ router.post("/", async (req, res) => {
   const menuData = {
     ...data,
     status: "pending",
+    active: false,
   };
   const result = await menuItemsCollection.insertOne(menuData);
   res.status(201).send(result);
@@ -60,7 +61,7 @@ router.patch("/:id/approve", async (req, res) => {
 
     const result = await menuItemsCollection.updateOne(
       { _id: new ObjectId(id) },
-      { $set: { status: "approved" } },
+      { $set: { status: "approved" ,active:true } },
     );
 
     if (!result.matchedCount) {
@@ -73,6 +74,50 @@ router.patch("/:id/approve", async (req, res) => {
   }
 });
 
+router.patch("/:id/inactive", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid item ID" });
+    }
+
+    const result = await menuItemsCollection.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { active:false } }, 
+    );
+
+    if (!result.matchedCount) {
+      return res.status(404).json({ message: "Menu item not found" });
+    }
+
+    res.status(200).json({ message: "Menu item rejected" });
+  } catch (error) {
+    res.status(500).json({ message: "Failed to reject menu item" });
+  }
+});
+router.patch("/:id/active", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid item ID" });
+    }
+
+    const result = await menuItemsCollection.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { active:true } }, 
+    );
+
+    if (!result.matchedCount) {
+      return res.status(404).json({ message: "Menu item not found" });
+    }
+
+    res.status(200).json({ message: "Menu item rejected" });
+  } catch (error) {
+    res.status(500).json({ message: "Failed to reject menu item" });
+  }
+});
 router.patch("/:id/reject", async (req, res) => {
   try {
     const { id } = req.params;
@@ -83,7 +128,7 @@ router.patch("/:id/reject", async (req, res) => {
 
     const result = await menuItemsCollection.updateOne(
       { _id: new ObjectId(id) },
-      { $set: { status: "rejected" } }, // "reject" নয়, "rejected"
+      { $set: { status: "rejected" } }, 
     );
 
     if (!result.matchedCount) {
