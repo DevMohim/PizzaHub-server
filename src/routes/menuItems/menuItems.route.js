@@ -14,6 +14,7 @@ router.post("/", async (req, res) => {
     ...data,
     status: "pending",
     active: false,
+    createAt: new Date()
   };
   const result = await menuItemsCollection.insertOne(menuData);
   res.status(201).send(result);
