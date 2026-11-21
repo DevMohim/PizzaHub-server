@@ -107,6 +107,21 @@ router.post('/create-checkout-session' , async(req,res) => {
    }
 })
 
+router.get('/' ,async(req,res) => {
+  try {
+     
+  
+      const result = await transactionCollection.find().toArray();
+  
+      if (!result) {
+        return res.status(404).send({ message: "Menu item not found" });
+      }
+      res.status(200).send(result);
+    } catch (error) {
+      res.status(400).send({ message: "Invalid id", error: error.message });
+    }
+})
+
 
 
 
