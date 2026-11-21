@@ -6,6 +6,12 @@ export const menuItemsCollection = db.collection("MenuItems");
 
 const router = Router();
 
+/**
+ * Escapes special regex characters so a search term like "p1zza" is matched
+ * as plain text instead of being treated as a pattern.
+ */
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 
 //create menu
 router.post("/", async (req, res) => {
@@ -21,18 +27,62 @@ router.post("/", async (req, res) => {
 });
 
 
-//getAll  menu items
+//get all menu items — with optional search, filters and sorting
 router.get("/", async (req, res) => {
+  const { email, status, active, search, category, location, sort } = req.query;
 
-  const {email, status} = req.query
-  let filter = {}
-  if(status){
-    filter.status = status
+  const filter = {};
+
+  // Filter by vendor email (used by the vendor dashboard).
+  if (email) {
+    filter.userEmail = email;
   }
-  if(email){
-    filter.userEmail = email
+
+  // Filter by review status, e.g. "pending" for the admin review queue.
+  if (status) {
+    filter.status = status;
   }
-  const result = await menuItemsCollection.find(filter).toArray();
+
+  // Filter by published state — accepts "true" or "false".
+  if (active === "true") {
+    filter.active = true;
+  } else if (active === "false") {
+    filter.active = false;
+  }
+
+  // Filter by category, e.g. "classic-pizzas".
+  if (category && category !== "all") {
+    filter.category = category;
+  }
+
+  // Filter by location — case-insensitive exact match.
+  if (location && location !== "all") {
+    filter.location = { $regex: `^${escapeRegex(location)}$`, $options: "i" };
+  }
+
+  // Search by item name, description, category or location.
+  // Every field is matched case-insensitively.
+  if (search && search.trim()) {
+    const safeSearch = escapeRegex(search.trim());
+
+    filter.$or = [
+      { itemName: { $regex: safeSearch, $options: "i" } },
+      { description: { $regex: safeSearch, $options: "i" } },
+      { category: { $regex: safeSearch, $options: "i" } },
+      { location: { $regex: safeSearch, $options: "i" } },
+    ];
+  }
+
+  // Sort by price (low to high / high to low). Default: newest first.
+  let sortBy = { createAt: -1 };
+
+  if (sort === "price-asc") {
+    sortBy = { price: 1 };
+  } else if (sort === "price-desc") {
+    sortBy = { price: -1 };
+  }
+
+  const result = await menuItemsCollection.find(filter).sort(sortBy).toArray();
   res.status(200).send(result);
 });
 
