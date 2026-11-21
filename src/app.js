@@ -10,6 +10,12 @@ import { ObjectId } from "mongodb";
 const app = express();
 
 
+const startDate = new Date();
+
+const expireDate = new Date(startDate);
+expireDate.setMonth(expireDate.getMonth() + 1);
+
+
 app.post(
   "/api/webhooks/stripe",
   express.raw({ type: "application/json" }),
@@ -77,6 +83,7 @@ app.post(
                 plan: "premium",
                 planStatus: "active",
                 premiumSince: new Date(),
+                ExpireAt : expireDate
               },
             },
           );

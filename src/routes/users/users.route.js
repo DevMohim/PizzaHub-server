@@ -13,6 +13,12 @@ router.get('/' ,async (req,res)=>{
    res.send(result)
 })
 
+router.get('/:userEmail' ,async (req,res)=>{
+  const { userEmail } = req.params;
+   const result = await usersCollection.findOne({ email: userEmail });
+   res.send(result)
+})
+
 router.patch("/:id/block", async (req, res) => {
   try {
     const { id } = req.params;
