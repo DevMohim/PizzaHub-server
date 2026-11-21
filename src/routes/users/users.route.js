@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db } from "../../config/db.js";
 import { ObjectId } from "mongodb";
 
-const usersCollection = db.collection('user')
+export const usersCollection = db.collection('user')
 
 export const router = Router();
 
