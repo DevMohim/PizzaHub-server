@@ -54,7 +54,7 @@ app.post(
         // Guard against missing/invalid ids. new ObjectId(undefined) silently
         // creates a random id, which makes updateOne match nothing.
         if (transactionId && ObjectId.isValid(transactionId)) {
-          const updateStatus = await transactionCollection.updateOne(
+           await transactionCollection.updateOne(
             { _id: new ObjectId(transactionId) },
             {
               $set: {

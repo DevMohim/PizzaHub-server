@@ -3,59 +3,60 @@ import { db } from "../../config/db.js";
 import { stripe } from "../../config/stripe.js";
 import { Router } from "express";
 import { usersCollection } from "../users/users.route.js";
+import { requireRole, verifyToken } from "../../middlewares/verifyToken.js";
 
-export const transactionCollection = db.collection('Transaction')
+export const transactionCollection = db.collection("Transaction");
 
-const router = Router()
+const router = Router();
 
 // Subscription plans with pricing — backend is the source of truth
 const PLANS = {
   premium: { name: "Premium", price: 29.99, currency: "usd" },
-}
+};
 
-router.post('/create-checkout-session' , async(req,res) => {
-   let transactionId
-   try {
-     const payload = req.body
-     const id = payload.vendorId || payload.userId
+router.post("/create-checkout-session",async (req, res) => {
+  let transactionId;
+  try {
+    const payload = req.body;
+    const id = payload.vendorId || payload.userId;
 
-     const clientUrl = (process.env.CLIENT_URL || "").replace(/\/+$/, "")
+    const clientUrl = (process.env.CLIENT_URL || "").replace(/\/+$/, "");
 
-     if (!clientUrl) {
-       return res.status(500).json({ message: "Server configuration error" });
-     }
-
-     if (!id || !ObjectId.isValid(id)) {
-       return res.status(400).json({ message: "Invalid vendor ID" });
-     }
-
-     const vendor = await usersCollection.findOne({ _id: new ObjectId(id) })
-
-     if (!vendor) {
-       return res.status(404).json({ message: "Vendor not found" });
-     }
-
-     const planKey = payload.plan
-     const plan = PLANS[planKey]
-
-     if (!plan) {
-       return res.status(400).json({ message: "Invalid plan" });
-     }
-
-     const amount = plan.price
-     const currency = plan.currency
-
-     const transactionData = {
-       vendorId: new ObjectId(id),
-       plan: planKey,
-       amount: amount,
-       currency: currency,
-       status: 'pending',
-       createdAt: new Date()
+    if (!clientUrl) {
+      return res.status(500).json({ message: "Server configuration error" });
     }
 
-    const result = await transactionCollection.insertOne(transactionData)
-    transactionId = result.insertedId
+    if (!id || !ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid vendor ID" });
+    }
+
+    const vendor = await usersCollection.findOne({ _id: new ObjectId(id) });
+
+    if (!vendor) {
+      return res.status(404).json({ message: "Vendor not found" });
+    }
+
+    const planKey = payload.plan;
+    const plan = PLANS[planKey];
+
+    if (!plan) {
+      return res.status(400).json({ message: "Invalid plan" });
+    }
+
+    const amount = plan.price;
+    const currency = plan.currency;
+
+    const transactionData = {
+      vendorId: new ObjectId(id),
+      plan: planKey,
+      amount: amount,
+      currency: currency,
+      status: "pending",
+      createdAt: new Date(),
+    };
+
+    const result = await transactionCollection.insertOne(transactionData);
+    transactionId = result.insertedId;
 
     const session = await stripe.checkout.sessions.create({
       line_items: [
@@ -68,7 +69,7 @@ router.post('/create-checkout-session' , async(req,res) => {
             // CHANGED: parseInt -> Math.round (convert USD amount to cents correctly)
             unit_amount: Math.round(amount * 100),
             recurring: {
-              interval: 'month',
+              interval: "month",
               interval_count: 1,
             },
           },
@@ -87,7 +88,7 @@ router.post('/create-checkout-session' , async(req,res) => {
 
     await transactionCollection.updateOne(
       { _id: transactionId },
-      { $set: { stripeSessionId: session.id} },
+      { $set: { stripeSessionId: session.id } },
     );
 
     res.status(200).json({
@@ -95,34 +96,31 @@ router.post('/create-checkout-session' , async(req,res) => {
       message: "Checkout session created",
       url: session.url,
     });
-   } catch (error) {
-     console.error("Create checkout session error:", error);
+  } catch (error) {
+    console.error("Create checkout session error:", error);
 
-     // Don't leave an orphaned pending transaction if Stripe failed.
-     if (transactionId) {
-       await transactionCollection.deleteOne({ _id: transactionId });
-     }
-
-     return res.status(500).json({ message: "Failed to create checkout session" });
-   }
-})
-
-router.get('/' ,async(req,res) => {
-  try {
-     
-  
-      const result = await transactionCollection.find().toArray();
-  
-      if (!result) {
-        return res.status(404).send({ message: "Menu item not found" });
-      }
-      res.status(200).send(result);
-    } catch (error) {
-      res.status(400).send({ message: "Invalid id", error: error.message });
+    // Don't leave an orphaned pending transaction if Stripe failed.
+    if (transactionId) {
+      await transactionCollection.deleteOne({ _id: transactionId });
     }
-})
 
+    return res
+      .status(500)
+      .json({ message: "Failed to create checkout session" });
+  }
+});
 
+router.get("/", verifyToken,requireRole("admin"),async (req, res) => {
+  try {
+    const result = await transactionCollection.find().toArray();
 
+    if (!result) {
+      return res.status(404).send({ message: "Menu item not found" });
+    }
+    res.status(200).send(result);
+  } catch (error) {
+    res.status(400).send({ message: "Invalid id", error: error.message });
+  }
+});
 
-export default router
+export default router;

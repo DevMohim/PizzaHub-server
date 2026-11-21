@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db } from "../../config/db.js";
 import { ObjectId } from "mongodb";
 
+
 export const menuItemsCollection = db.collection("MenuItems");
 
 const router = Router();
@@ -14,13 +15,13 @@ const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 
 //create menu
-router.post("/", async (req, res) => {
+router.post("/",  async (req, res) => {
   const data = req.body;
   const menuData = {
     ...data,
     status: "pending",
     active: false,
-    createAt: new Date()
+    createAt: new Date(),
   };
   const result = await menuItemsCollection.insertOne(menuData);
   res.status(201).send(result);
@@ -148,7 +149,7 @@ router.delete('/:id' ,async (req,res)=> {
 
 
 
-router.patch("/:id/approve", async (req, res) => {
+router.patch("/:id/approve",  async (req, res) => {
   try {
     const { id } = req.params;
 
