@@ -64,6 +64,7 @@ app.post(
             { _id: new ObjectId(vendorId) },
             {
               $set: {
+                paymentstatus:'paid',
                 subscriptionPlan: "premium",
                 subscriptionExpiresAt: expireDate,
               },
