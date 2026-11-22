@@ -1,11 +1,6 @@
 import 'dotenv/config'
-import express from "express";
 import app from "./app.js"
 import { connectDB } from "./config/db.js"
-import { ObjectId } from 'mongodb';
-import { stripe } from "./config/stripe.js";
-import { transactionCollection } from './routes/transaction/transaction.route.js';
-import { usersCollection } from './routes/users/users.route.js';
 
 const port = process.env.PORT || 5000
 

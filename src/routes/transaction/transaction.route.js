@@ -1,126 +1,123 @@
-import { ObjectId } from "mongodb";
-import { db } from "../../config/db.js";
-import { stripe } from "../../config/stripe.js";
 import { Router } from "express";
-import { usersCollection } from "../users/users.route.js";
+import { ObjectId } from "mongodb";
+import { stripe } from "../../config/stripe.js";
+import { transactionCollection } from "../../config/collections.js";
 import { requireRole, verifyToken } from "../../middlewares/verifyToken.js";
+import { asyncHandler } from "../../utils/asyncHandler.js";
 
-export const transactionCollection = db.collection("Transaction");
+export const router = Router();
 
-const router = Router();
-
-// Subscription plans with pricing — backend is the source of truth
+// Backend is the only source of truth for prices
 const PLANS = {
   premium: { name: "Premium", price: 29.99, currency: "usd" },
 };
 
-router.post("/create-checkout-session",async (req, res) => {
-  let transactionId;
-  try {
-    const payload = req.body;
-    const id = payload.vendorId || payload.userId;
-
+// POST /api/transactions/create-checkout-session  (vendor only)
+router.post(
+  "/create-checkout-session",
+  verifyToken,
+  requireRole("vendor"),
+  asyncHandler(async (req, res) => {
     const clientUrl = (process.env.CLIENT_URL || "").replace(/\/+$/, "");
 
     if (!clientUrl) {
       return res.status(500).json({ message: "Server configuration error" });
     }
 
-    if (!id || !ObjectId.isValid(id)) {
-      return res.status(400).json({ message: "Invalid vendor ID" });
-    }
-
-    const vendor = await usersCollection.findOne({ _id: new ObjectId(id) });
-
-    if (!vendor) {
-      return res.status(404).json({ message: "Vendor not found" });
-    }
-
-    const planKey = payload.plan;
-    const plan = PLANS[planKey];
-
+    const plan = PLANS[req.body?.plan];
     if (!plan) {
       return res.status(400).json({ message: "Invalid plan" });
     }
 
-    const amount = plan.price;
-    const currency = plan.currency;
+    const isAlreadyPremium =
+      req.user.subscriptionPlan === "premium" &&
+      req.user.subscriptionExpiresAt &&
+      new Date(req.user.subscriptionExpiresAt) > new Date();
 
-    const transactionData = {
-      vendorId: new ObjectId(id),
-      plan: planKey,
-      amount: amount,
-      currency: currency,
-      status: "pending",
-      createdAt: new Date(),
-    };
+    if (isAlreadyPremium) {
+      return res
+        .status(409)
+        .json({ message: "You already have an active Premium plan" });
+    }
 
-    const result = await transactionCollection.insertOne(transactionData);
-    transactionId = result.insertedId;
+    // Vendor সবসময় logged-in user, body থেকে নেওয়া হয় না
+    const { insertedId: transactionId } = await transactionCollection.insertOne(
+      {
+        vendorId: new ObjectId(req.user.id),
+        vendorEmail: req.user.email,
+        plan: "premium",
+        amount: plan.price,
+        currency: plan.currency,
+        status: "pending",
+        createdAt: new Date(),
+      },
+    );
 
-    const session = await stripe.checkout.sessions.create({
-      line_items: [
-        {
-          price_data: {
-            currency: currency,
-            product_data: {
-              name: `${plan.name} Subscription`,
-            },
-            // CHANGED: parseInt -> Math.round (convert USD amount to cents correctly)
-            unit_amount: Math.round(amount * 100),
-            recurring: {
-              interval: "month",
-              interval_count: 1,
+    let session;
+    try {
+      session = await stripe.checkout.sessions.create({
+        mode: "subscription",
+        customer_email: req.user.email,
+        line_items: [
+          {
+            quantity: 1,
+            price_data: {
+              currency: plan.currency,
+              product_data: { name: `${plan.name} Subscription` },
+              unit_amount: Math.round(plan.price * 100),
+              recurring: { interval: "month" },
             },
           },
-          quantity: 1,
+        ],
+        success_url: `${clientUrl}/payment/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${clientUrl}/payment/cancel`,
+        metadata: {
+          transactionId: transactionId.toString(),
+          vendorId: req.user.id,
         },
-      ],
-      success_url: `${clientUrl}/payment/success?transactionId=${transactionId.toString()}&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${clientUrl}/payment/cancel`,
-      mode: "subscription",
-      metadata: {
-        transactionId: transactionId.toString(),
-        vendorId: id,
-        vendorEmail: vendor.email ?? "",
-      },
-    });
+        subscription_data: {
+          metadata: {
+            transactionId: transactionId.toString(),
+            vendorId: req.user.id,
+          },
+        },
+      });
+    } catch (error) {
+      await transactionCollection.updateOne(
+        { _id: transactionId },
+        { $set: { status: "failed" } },
+      );
+      throw error;
+    }
 
     await transactionCollection.updateOne(
       { _id: transactionId },
       { $set: { stripeSessionId: session.id } },
     );
 
-    res.status(200).json({
-      success: true,
-      message: "Checkout session created",
-      url: session.url,
-    });
-  } catch (error) {
-    console.error("Create checkout session error:", error);
+    res.status(200).json({ success: true, url: session.url });
+  }),
+);
 
-    // Don't leave an orphaned pending transaction if Stripe failed.
-    if (transactionId) {
-      await transactionCollection.deleteOne({ _id: transactionId });
+// GET /api/transactions  (admin only, read-only)
+router.get(
+  "/",
+  verifyToken,
+  requireRole("admin"),
+  asyncHandler(async (req, res) => {
+    const filter = {};
+
+    if (["pending", "paid", "failed"].includes(req.query.status)) {
+      filter.status = req.query.status;
     }
 
-    return res
-      .status(500)
-      .json({ message: "Failed to create checkout session" });
-  }
-});
+    const transactions = await transactionCollection
+      .find(filter)
+      .sort({ createdAt: -1 })
+      .toArray();
 
-router.get("/", verifyToken,requireRole("admin"),async (req, res) => {
-  try {
-    const result = await transactionCollection.find().toArray();
-
-    if (!result) {
-      return res.status(404).send({ message: "Menu item not found" });
-    }
-    res.status(200).send(result);
-  } catch (error) {
-    res.status(400).send({ message: "Invalid id", error: error.message });
-  }
-});
+    res.status(200).json(transactions);
+  }),
+);
 
 export default router;
