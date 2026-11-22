@@ -28,7 +28,7 @@ const isPremium = (vendor = {}) =>
   Boolean(vendor.subscriptionExpiresAt) &&
   new Date(vendor.subscriptionExpiresAt) > new Date();
 
-// Free vendors can have at most 3 active items. Premium vendors have no limit.
+// Free vendor এর সর্বোচ্চ 3টি active item। Premium এ সীমা নেই।
 const canActivateItem = async (vendorId, vendor) => {
   if (isPremium(vendor)) return true;
 
@@ -40,7 +40,7 @@ const canActivateItem = async (vendorId, vendor) => {
   return activeCount < FREE_ACTIVE_LIMIT;
 };
 
-// Only these fields can come from the client. status, active, vendorId are never taken from the body.
+// Client থেকে শুধু এই field গুলো নেওয়া হয়। status, active, vendorId কখনো body থেকে নয়।
 const validateItem = (body = {}) => {
   const itemName = String(body.itemName ?? "").trim();
   const category = String(body.category ?? "").trim();
@@ -69,7 +69,7 @@ const validateItem = (body = {}) => {
   return { data: { itemName, category, description, location, price, images } };
 };
 
-// POST /api/menu-items  (vendor creates an item, status is pending)
+// POST /api/menu-items  (vendor, status pending)
 router.post(
   "/",
   verifyToken,
@@ -99,7 +99,7 @@ router.post(
   }),
 );
 
-// GET /api/menu-items  (public: only approved and active items)
+// GET /api/menu-items  (public: শুধু approved ও active)
 router.get(
   "/",
   asyncHandler(async (req, res) => {
@@ -139,7 +139,7 @@ router.get(
   }),
 );
 
-// GET /api/menu-items/featured  (public: 6 approved and active items for the homepage)
+// GET /api/menu-items/featured  (public: homepage এর 6টি)
 router.get(
   "/featured",
   asyncHandler(async (_req, res) => {
@@ -153,7 +153,7 @@ router.get(
   }),
 );
 
-// GET /api/menu-items/vendor/my  (vendor sees own items, including pending and rejected)
+// GET /api/menu-items/vendor/my  (vendor নিজের সব item)
 router.get(
   "/vendor/my",
   verifyToken,
@@ -168,7 +168,7 @@ router.get(
   }),
 );
 
-// GET /api/menu-items/admin/all?status=pending  (admin review queue)
+// GET /api/menu-items/admin/all?status=pending  (admin)
 router.get(
   "/admin/all",
   verifyToken,
@@ -198,8 +198,7 @@ router.get(
   }),
 );
 
-// GET /api/menu-items/:id  (login required)
-// Other users can see only approved and active items. Owners and admins can see all.
+// GET /api/menu-items/:id  (login লাগে)
 router.get(
   "/:id",
   verifyToken,
@@ -227,8 +226,7 @@ router.get(
   }),
 );
 
-// PATCH /api/menu-items/:id  (vendor edits own item)
-// Editing sends the item back to pending, so admin must review it again.
+// PATCH /api/menu-items/:id  (vendor নিজের item edit, আবার pending হয়)
 router.patch(
   "/:id",
   verifyToken,
@@ -273,7 +271,7 @@ router.patch(
   }),
 );
 
-// DELETE /api/menu-items/:id  (vendor owner or admin)
+// DELETE /api/menu-items/:id  (vendor owner বা admin)
 router.delete(
   "/:id",
   verifyToken,
@@ -303,7 +301,7 @@ router.delete(
   }),
 );
 
-// Vendor availability: turn an approved item on or off
+// Vendor availability: approved item চালু বা বন্ধ
 const setAvailability = async (req, res, active) => {
   const { id } = req.params;
 
@@ -358,7 +356,7 @@ router.patch(
   ),
 );
 
-// Kept for compatibility with the existing frontend paths
+// Frontend এর পুরনো path রাখা হয়েছে
 router.patch(
   "/:id/active",
   verifyToken,
@@ -374,7 +372,10 @@ router.patch(
 );
 
 // Admin moderation
-const moderateItem = async (req, res, status) => {
+// approve  -> status approved, active true (free plan limit চেক হয়)
+// reject   -> status rejected, active false
+// inactive -> status approved থাকে, শুধু active false
+const moderateItem = async (req, res, action) => {
   const { id } = req.params;
 
   if (!ObjectId.isValid(id)) {
@@ -387,7 +388,7 @@ const moderateItem = async (req, res, status) => {
     return res.status(404).json({ message: "Menu item not found" });
   }
 
-  if (status === "approved") {
+  if (action === "approved") {
     if (!item.active) {
       const vendor = await usersCollection.findOne(
         { _id: item.vendorId },
@@ -411,13 +412,31 @@ const moderateItem = async (req, res, status) => {
     return res.status(200).json({ message: "Menu item approved" });
   }
 
-  // "rejected" or "inactive"
-  await menuItemsCollection.updateOne(
-    { _id: item._id },
-    { $set: { status, active: false, updatedAt: new Date() } },
-  );
+  if (action === "rejected") {
+    await menuItemsCollection.updateOne(
+      { _id: item._id },
+      { $set: { status: "rejected", active: false, updatedAt: new Date() } },
+    );
 
-  return res.status(200).json({ message: `Menu item ${status}` });
+    return res.status(200).json({ message: "Menu item rejected" });
+  }
+
+  if (action === "inactive") {
+    if (item.status !== "approved") {
+      return res
+        .status(409)
+        .json({ message: "Only approved items can be made inactive" });
+    }
+
+    await menuItemsCollection.updateOne(
+      { _id: item._id },
+      { $set: { active: false, updatedAt: new Date() } },
+    );
+
+    return res.status(200).json({ message: "Menu item made inactive" });
+  }
+
+  return res.status(400).json({ message: "Invalid status" });
 };
 
 router.patch(
