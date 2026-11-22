@@ -9,18 +9,25 @@ export const router = Router();
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const publicFields = { projection: { password: 0 } };
 
-// GET /api/users?role=vendor&search=abc  (admin only)
+// GET /api/users?role=vendor&search=abc&status=blocked  (admin only)
 router.get(
   "/",
   verifyToken,
   requireRole("admin"),
   asyncHandler(async (req, res) => {
-    const { role, search } = req.query;
+    const { role, search, status } = req.query;
 
     const filter = { role: { $in: ["customer", "vendor"] } };
 
     if (role === "customer" || role === "vendor") {
       filter.role = role;
+    }
+
+    if (status === "active") {
+      // Matches both `isBlocked: false` and legacy users without the field.
+      filter.isBlocked = { $ne: true };
+    } else if (status === "blocked") {
+      filter.isBlocked = true;
     }
 
     if (search && String(search).trim()) {

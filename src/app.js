@@ -87,6 +87,11 @@ app.use("/api/menu-items", menuRouter);
 app.use("/api/orders", ordersRouter);
 app.use("/api/transactions", transactionRouter);
 
+
+app.get('/' , (req,res)=>{
+  res.send("server running successfully")
+})
+
 app.use((req, res) => {
   res.status(404).json({ message: "Route not found" });
 });
