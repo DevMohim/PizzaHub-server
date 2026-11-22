@@ -168,33 +168,104 @@ router.get(
   }),
 );
 
-// GET /api/menu-items/admin/all?status=pending  (admin)
+// GET /api/menu-items/admin/all?search=&status=&category=&vendor=&sort=&page=&limit=
 router.get(
   "/admin/all",
   verifyToken,
   requireRole("admin"),
   asyncHandler(async (req, res) => {
-    const { status, search } = req.query;
+    const { search, status, category, vendor, sort } = req.query;
+
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(
+      100,
+      Math.max(1, parseInt(req.query.limit, 10) || 20),
+    );
+
     const filter = {};
 
-    if (["pending", "approved", "rejected"].includes(status)) {
+    // status: pending | rejected | approved | active | inactive
+    if (
+      status === "pending" ||
+      status === "rejected" ||
+      status === "approved"
+    ) {
       filter.status = status;
+    } else if (status === "active") {
+      filter.status = "approved";
+      filter.active = true;
+    } else if (status === "inactive") {
+      filter.status = "approved";
+      filter.active = { $ne: true };
+    }
+
+    if (category && CATEGORIES.includes(String(category))) {
+      filter.category = String(category);
+    }
+
+    if (vendor && ObjectId.isValid(vendor)) {
+      filter.vendorId = new ObjectId(vendor);
     }
 
     if (search && String(search).trim()) {
       const safe = escapeRegex(String(search).trim());
       filter.$or = [
         { itemName: { $regex: safe, $options: "i" } },
+        { description: { $regex: safe, $options: "i" } },
+        { location: { $regex: safe, $options: "i" } },
         { vendorEmail: { $regex: safe, $options: "i" } },
+        { vendorName: { $regex: safe, $options: "i" } },
       ];
     }
 
-    const items = await menuItemsCollection
-      .find(filter)
-      .sort({ createdAt: -1 })
+    let sortBy = { createdAt: -1 };
+    if (sort === "oldest") sortBy = { createdAt: 1 };
+    if (sort === "price-asc") sortBy = { price: 1 };
+    if (sort === "price-desc") sortBy = { price: -1 };
+    if (sort === "name-asc") sortBy = { itemName: 1 };
+
+    const [items, total] = await Promise.all([
+      menuItemsCollection
+        .find(filter)
+        .sort(sortBy)
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .toArray(),
+      menuItemsCollection.countDocuments(filter),
+    ]);
+
+    res.status(200).json({ items, total, page, limit });
+  }),
+);
+
+// GET /api/menu-items/admin/vendors  (vendor dropdown এর জন্য)
+router.get(
+  "/admin/vendors",
+  verifyToken,
+  requireRole("admin"),
+  asyncHandler(async (_req, res) => {
+    const vendors = await menuItemsCollection
+      .aggregate([
+        { $match: { vendorId: { $exists: true, $ne: null } } },
+        {
+          $group: {
+            _id: "$vendorId",
+            email: { $first: "$vendorEmail" },
+            name: { $first: "$vendorName" },
+          },
+        },
+        { $sort: { name: 1 } },
+      ])
       .toArray();
 
-    res.status(200).json(items);
+    res.status(200).json(
+      vendors.map((v) => ({
+        value: v._id.toString(),
+        label: v.name
+          ? `${v.name} (${v.email ?? ""})`
+          : (v.email ?? "Unknown vendor"),
+      })),
+    );
   }),
 );
 
