@@ -37,7 +37,6 @@ export const verifyToken = async (req, res, next) => {
   }
 
   const userId = payload.sub;
-  console.log("token iss:", payload.iss, "| sub:", payload.sub);
 
   if (typeof userId !== "string" || !ObjectId.isValid(userId)) {
     console.error("Invalid sub (not ObjectId):", userId);
