@@ -331,8 +331,8 @@ router.patch(
       {
         $set: {
           ...data,
-          status: "pending",
-          active: false,
+          // status: "pending",
+          // active: false,
           updatedAt: new Date(),
         },
       },
