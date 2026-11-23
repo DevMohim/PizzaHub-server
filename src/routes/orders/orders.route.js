@@ -11,7 +11,7 @@ export const router = Router();
 
 const ACTIVE_STATUSES = ["pending", "accepted"];
 
-// Converts any date input to midnight UTC, so the same day always matches
+// যেকোনো date কে UTC midnight এ আনে, যাতে একই দিন সবসময় মেলে
 const toDay = (value) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
@@ -19,7 +19,7 @@ const toDay = (value) => {
   return date;
 };
 
-// POST /api/orders  (customer places an order)
+// POST /api/orders  (customer order দেয়)
 router.post(
   "/",
   verifyToken,
@@ -104,7 +104,7 @@ router.post(
   }),
 );
 
-// GET /api/orders/my  (customer's own orders)
+// GET /api/orders/my  (customer নিজের order দেখে)
 router.get(
   "/my",
   verifyToken,
@@ -119,7 +119,7 @@ router.get(
   }),
 );
 
-// GET /api/orders/vendor  (orders for this vendor only)
+// GET /api/orders/vendor  (vendor শুধু নিজের item এর order দেখে)
 router.get(
   "/vendor",
   verifyToken,
@@ -134,7 +134,7 @@ router.get(
   }),
 );
 
-// GET /api/orders/admin?status=pending  (admin only)
+// GET /api/orders/admin?status=pending  (admin)
 router.get(
   "/admin",
   verifyToken,
@@ -159,7 +159,7 @@ router.get(
   }),
 );
 
-// Vendor accept or reject. Only pending orders can change, and only once.
+// Vendor accept/reject: শুধু pending order, এবং একবারই
 const decideOrder = (nextStatus) =>
   asyncHandler(async (req, res) => {
     const { id } = req.params;
@@ -180,7 +180,7 @@ const decideOrder = (nextStatus) =>
         .json({ message: "You can only manage your own orders" });
     }
 
-    // The status is part of the filter, so two requests at the same time can't both succeed
+    // status filter এ থাকায় একই সময়ের দুটি request এর একটিই সফল হবে
     const result = await ordersCollection.updateOne(
       { _id: order._id, status: "pending" },
       {
@@ -215,8 +215,8 @@ router.patch(
   decideOrder("rejected"),
 );
 
-// PATCH /api/orders/:id/cancel  (customer cancels own pending order)
-router.patch(
+// DELETE /api/orders/:id  (customer নিজের pending order delete করে)
+router.delete(
   "/:id/cancel",
   verifyToken,
   requireRole("customer"),
@@ -236,21 +236,25 @@ router.patch(
     if (order.customerId.toString() !== req.user.id) {
       return res
         .status(403)
-        .json({ message: "You can only cancel your own orders" });
+        .json({ message: "You can only delete your own orders" });
     }
 
-    const result = await ordersCollection.updateOne(
-      { _id: order._id, status: "pending" },
-      { $set: { status: "cancelled", updatedAt: new Date() } },
-    );
-
-    if (!result.matchedCount) {
+    if (order.status !== "pending") {
       return res
         .status(409)
-        .json({ message: "Only pending orders can be cancelled" });
+        .json({ message: "Only pending orders can be deleted" });
     }
 
-    res.status(200).json({ message: "Order cancelled" });
+    const result = await ordersCollection.deleteOne({
+      _id: new ObjectId(id)});
+
+    if (!result.deletedCount) {
+      return res
+        .status(409)
+        .json({ message: "Only pending orders can be deleted" });
+    }
+
+    res.status(200).json({ message: "Order deleted" });
   }),
 );
 
